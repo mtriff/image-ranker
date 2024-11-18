@@ -3,55 +3,77 @@ import os
 import random
 import itertools
 from elo import TrueSkillRanking
-import tkinter as tk
-from tkinter import filedialog
 import csv
 from io import StringIO
-import logging
 import threading
-from threading import Thread
+import logging
 from datetime import datetime
+import tkinter as tk
+from tkinter import filedialog
+import platform
 
 logging.basicConfig(level=logging.DEBUG)
 
+# Global variables
 app = Flask(__name__)
 elo_ranking = TrueSkillRanking()
 excluded_images = set()
-
+current_directory = None
 IMAGE_FOLDER = 'static/images'
 image_pairs_lock = threading.Lock()
-
-# Add this global variable near the top of the file
-current_directory = None
-
-def get_image_paths():
-    image_paths = []
-    for root, dirs, files in os.walk(IMAGE_FOLDER):
-        for file in files:
-            if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.jfif', '.avif', '.heic', '.heif')):
-                image_path = os.path.join(root, file).replace('\\', '/')
-                if image_path not in excluded_images:
-                    image_paths.append(image_path)
-    random.shuffle(image_paths)
-    return image_paths
-
 image_pairs = []
 current_pair_index = 0
 last_shown_image = None
+comparisons_since_autosave = 0
+
+def get_image_paths():
+    image_paths = []
+    app.logger.debug(f"Searching for images in: {IMAGE_FOLDER}")
+    for root, dirs, files in os.walk(IMAGE_FOLDER):
+        for file in files:
+            if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.jfif', '.avif', '.heic', '.heif')):
+                # Get absolute path
+                abs_path = os.path.join(root, file)
+                if abs_path not in excluded_images:
+                    image_paths.append(abs_path)
+                    app.logger.debug(f"Found image: {abs_path}")
+    
+    if not image_paths:
+        app.logger.warning(f"No images found in {IMAGE_FOLDER}")
+    else:
+        app.logger.info(f"Found {len(image_paths)} images")
+    
+    return image_paths
 
 def initialize_image_pairs(a=False):
     global image_pairs, current_pair_index
     image_paths = get_image_paths()
+    
+    if not image_paths:
+        app.logger.error("No images found to initialize pairs")
+        return
+        
+    app.logger.debug(f"Initializing pairs with {len(image_paths)} images")
+    
     n = len(image_paths)
     initial_pairs = []
     for i in range(n):
         pair = (image_paths[i], image_paths[(i+1) % n])
         initial_pairs.append(pair)
+    
+    app.logger.debug(f"Created {len(initial_pairs)} initial pairs")
+    
     random.shuffle(initial_pairs)
     remaining_pairs = list(itertools.combinations(image_paths, 2))
     remaining_pairs = [pair for pair in remaining_pairs if pair not in initial_pairs]
+    
+    app.logger.debug(f"Created {len(remaining_pairs)} remaining pairs")
+    
     image_pairs = initial_pairs + remaining_pairs
     image_pairs = [pair for pair in image_pairs if pair[0] not in excluded_images and pair[1] not in excluded_images]
+    
+    app.logger.info(f"Total pairs created: {len(image_pairs)}")
+    
     random.shuffle(image_pairs[n:])
     current_pair_index = 0
 
@@ -122,18 +144,42 @@ def get_images():
 
 @app.route('/serve_image')
 def serve_image():
-    image_path = request.args.get('path')
-    if image_path.startswith('/serve_image'):
-        image_path = image_path.split('=', 1)[1]
-    file_extension = os.path.splitext(image_path)[1].lower()
-    if file_extension == '.webp':
-        mimetype = 'image/webp'
-    else:
-        mimetype = 'image/jpeg'
-    return send_file(image_path, mimetype=mimetype)
-
-# Add this global variable to keep track of comparisons since last autosave
-comparisons_since_autosave = 0
+    try:
+        image_path = request.args.get('path')
+        if not image_path:
+            return jsonify({'error': 'No image path provided'}), 400
+            
+        # Remove any URL encoding from the path
+        image_path = os.path.normpath(image_path)
+        
+        # If the path is relative to IMAGE_FOLDER, make it absolute
+        if not os.path.isabs(image_path):
+            image_path = os.path.join(IMAGE_FOLDER, os.path.basename(image_path))
+        
+        app.logger.debug(f"Attempting to serve image: {image_path}")
+        
+        # Check if the file exists
+        if not os.path.exists(image_path):
+            app.logger.error(f"Image not found: {image_path}")
+            return jsonify({'error': 'Image not found'}), 404
+            
+        file_extension = os.path.splitext(image_path)[1].lower()
+        if file_extension == '.webp':
+            mimetype = 'image/webp'
+        elif file_extension in ['.jpg', '.jpeg']:
+            mimetype = 'image/jpeg'
+        elif file_extension == '.png':
+            mimetype = 'image/png'
+        elif file_extension == '.gif':
+            mimetype = 'image/gif'
+        else:
+            mimetype = 'image/jpeg'  # default
+            
+        app.logger.debug(f"Serving image with mimetype: {mimetype}")
+        return send_file(image_path, mimetype=mimetype)
+    except Exception as e:
+        app.logger.error(f"Error serving image: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 def autosave_rankings():
     global elo_ranking, current_directory
@@ -229,39 +275,72 @@ def get_progress():
         'total': len(image_pairs)
     })
 
-@app.route('/select_directory', methods=['POST'])
-def select_directory():
+@app.route('/set_directory', methods=['POST'])
+def set_directory():
+    global IMAGE_FOLDER, current_directory, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave
+    
     try:
-        def directory_selection():
-            nonlocal directory
-            directory = open_directory_dialog()
-
-        directory = None
-        thread = Thread(target=directory_selection)
-        thread.start()
-        thread.join()
-
-        if directory:
-            global IMAGE_FOLDER, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave, current_directory
-            IMAGE_FOLDER = directory
-            current_directory = directory  # Save the selected directory
-            elo_ranking = TrueSkillRanking()  # Reset the ELO rankings
-            initialize_image_pairs()
-            current_pair_index = 0  # Reset the current pair index
-            comparisons_since_autosave = 0  # Reset the autosave counter
-            return jsonify({'success': True, 'directory': directory})
-        else:
-            return jsonify({'success': False, 'error': 'No directory selected'})
+        data = request.json
+        directory = data.get('directory')
+        
+        if not directory:
+            return jsonify({'success': False, 'error': 'No directory provided'}), 400
+        
+        # Get the absolute path of the current working directory
+        cwd = os.getcwd()
+        
+        # If we receive a relative path from the file input
+        if not os.path.isabs(directory):
+            # First try to find the directory in the current working directory
+            potential_path = os.path.join(cwd, directory)
+            if os.path.exists(potential_path):
+                directory = potential_path
+            else:
+                # Try to find the directory in the parent directory
+                parent_dir = os.path.dirname(cwd)
+                potential_path = os.path.join(parent_dir, directory)
+                if os.path.exists(potential_path):
+                    directory = potential_path
+        
+        # Normalize the path (converts slashes to the correct format for the OS)
+        directory = os.path.normpath(directory)
+        
+        app.logger.debug(f"Attempting to set directory to: {directory}")
+        
+        if not os.path.exists(directory):
+            # Try to find the directory by walking up the directory tree
+            current_path = cwd
+            while current_path != os.path.dirname(current_path):  # Stop at root directory
+                potential_path = os.path.join(current_path, directory)
+                if os.path.exists(potential_path):
+                    directory = potential_path
+                    break
+                current_path = os.path.dirname(current_path)
+        
+        if not os.path.exists(directory):
+            app.logger.error(f"Directory does not exist: {directory}")
+            return jsonify({'success': False, 'error': f'Directory does not exist: {directory}'}), 400
+            
+        if not os.path.isdir(directory):
+            app.logger.error(f"Not a directory: {directory}")
+            return jsonify({'success': False, 'error': f'Not a directory: {directory}'}), 400
+            
+        # Update directory paths
+        IMAGE_FOLDER = directory
+        current_directory = directory
+        
+        app.logger.info(f"Successfully set directory to: {directory}")
+        
+        # Reset the ranking system
+        elo_ranking = TrueSkillRanking()
+        initialize_image_pairs()
+        current_pair_index = 0
+        comparisons_since_autosave = 0
+        
+        return jsonify({'success': True, 'directory': directory})
     except Exception as e:
+        app.logger.error(f"Error in set_directory: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
-def open_directory_dialog():
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes('-topmost', True)
-    directory = filedialog.askdirectory(master=root)
-    root.destroy()
-    return directory
 
 @app.route('/export_rankings')
 def export_rankings():

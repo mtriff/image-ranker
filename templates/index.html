@@ -168,12 +168,18 @@
                 }
                 console.log('Received image data:', data);
                 currentImages = data;
-                document.getElementById('image1').src = '/serve_image?path=' +  data.image1;
-                document.getElementById('image2').src = '/serve_image?path=' + data.image2;
-                console.log('Image1 src:', data.image1);
-                console.log('Image2 src:', data.image2);
-                document.getElementById('image1-name').textContent = `Image A: ${decodeURIComponent(data.image1.split('=').pop().split('/').pop())}`;
-                document.getElementById('image2-name').textContent = `Image B: ${decodeURIComponent(data.image2.split('=').pop().split('/').pop())}`;
+                
+                // Update image sources
+                const image1 = document.getElementById('image1');
+                const image2 = document.getElementById('image2');
+                
+                image1.src = `/serve_image?path=${encodeURIComponent(data.image1)}`;
+                image2.src = `/serve_image?path=${encodeURIComponent(data.image2)}`;
+                
+                // Update image names
+                document.getElementById('image1-name').textContent = `Image A: ${data.image1.split('/').pop()}`;
+                document.getElementById('image2-name').textContent = `Image B: ${data.image2.split('/').pop()}`;
+                
                 updateProgress(data.progress);
             })
             .catch(error => {
@@ -313,12 +319,12 @@
                     });
                 });
                 
-                <!--
+                
                 // Ensure ads are loaded after the DOM is updated
                 setTimeout(() => {
                     (adsbygoogle = window.adsbygoogle || []).push({});
                 }, 100);
-                -->
+                
             });
         }
         
@@ -334,34 +340,53 @@
         updateRankings();
         
         document.getElementById('selectDirectoryBtn').addEventListener('click', function() {
-            fetch('/select_directory', {
-                method: 'POST'
-            })
-            .then(response => {
-                if (!response.ok) {
-                    return response.json().then(err => { throw err; });
+            const directoryInput = document.createElement('input');
+            directoryInput.type = 'file';
+            directoryInput.webkitdirectory = true;
+            directoryInput.multiple = true;
+            
+            directoryInput.addEventListener('change', function() {
+                if (directoryInput.files.length > 0) {
+                    // Get the full path of the first file
+                    const file = directoryInput.files[0];
+                    const fullPath = file.path || file.webkitRelativePath;
+                    // Get the directory path (everything before the last slash)
+                    const directoryPath = fullPath.split('/').slice(0, -1).join('/');
+                    
+                    console.log('Selected directory:', directoryPath);  // Debug log
+                    
+                    fetch('/set_directory', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ directory: directoryPath })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(data => {
+                                throw new Error(data.error || 'Failed to set directory');
+                            });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.success) {
+                            console.log('Directory set successfully:', data.directory);
+                            window.location.reload();  // Force a complete page reload
+                        } else {
+                            console.error('Error response:', data);
+                            alert('Error selecting directory: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error selecting directory: ' + error.message);
+                    });
                 }
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    alert('Directory selected successfully. Restarting ranking process...');
-                    currentImages = {};
-                    document.getElementById('rankingsList').innerHTML = '';
-                    document.getElementById('progress-fill').style.width = '0%';
-                    document.getElementById('progress-text').textContent = 'Progress: 0 / 0 comparisons';
-                    loadImages();
-                    updateRankings();
-                    // Update the current directory display
-                    document.getElementById('currentDirectory').textContent = 'Image Directory: ' + data.directory;
-                } else {
-                    throw new Error(data.error || 'Unknown error occurred');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('An error occurred while selecting the directory: ' + (error.message || error));
             });
+            
+            directoryInput.click();
         });
         
         // Function to load the current directory on page load
@@ -569,6 +594,35 @@
                 });
             }
         });
+        
+        // Add this function to handle manual directory input
+        function handleDirectoryInput() {
+            const directoryPath = prompt("Please enter the full directory path:");
+            if (directoryPath) {
+                fetch('/set_directory', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ directory: directoryPath })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Handle successful directory selection
+                        console.log('Directory set successfully:', data.directory);
+                        // Refresh the page or update the UI as needed
+                        location.reload();
+                    } else {
+                        alert('Error setting directory: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error setting directory');
+                });
+            }
+        }
     </script>
 </body>
 </html>
