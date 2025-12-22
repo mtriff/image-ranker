@@ -159,7 +159,7 @@
         let max_display = 30;
         
         function loadImages() {
-            fetch('/get_images')
+            fetch('{{ url_for('get_images') }}',)
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
@@ -189,7 +189,7 @@
             const winner = currentImages[winnerImage];
             const loser = winnerImage === 'image1' ? currentImages.image2 : currentImages.image1;
             
-            fetch('/update_elo', {
+            fetch('{{ url_for('update_elo') }}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -219,7 +219,7 @@
             }
             if (confirmation) {
                 console.error("fetching")
-                fetch('/remove_image', {
+                fetch('{{ url_for('remove_image') }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -238,7 +238,7 @@
         
         function updateRankings() {
             display_count = 0
-            fetch('/get_rankings')
+            fetch('{{ url_for('get_rankings') }}',)
             .then(response => response.json())
             .then(data => {
                 const rankingsList = document.getElementById('rankingsList');
@@ -334,7 +334,7 @@
         updateRankings();
         
         document.getElementById('selectDirectoryBtn').addEventListener('click', function() {
-            fetch('/select_directory', {
+            fetch('{{ url_for('select_directory') }}', {
                 method: 'POST'
             })
             .then(response => {
@@ -366,7 +366,7 @@
         
         // Function to load the current directory on page load
         function loadCurrentDirectory() {
-            fetch('/get_current_directory')
+            fetch('{{ url_for('get_current_directory') }}',)
             .then(response => response.json())
             .then(data => {
                 if (data.directory) {
@@ -385,7 +385,7 @@
         window.addEventListener('load', loadCurrentDirectory);
         
         document.getElementById('exportRankingsBtn').addEventListener('click', function() {
-            fetch('/export_rankings')
+            fetch('{{ url_for('export_rankings') }}',)
             .then(response => {
                 console.log('Response status:', response.status);
                 console.log('Response headers:', response.headers);
@@ -415,7 +415,7 @@
         });
         
         document.getElementById('export-comparisons-btn').addEventListener('click', function() {
-            fetch('/export_comparisons')
+            fetch('{{ url_for('export_comparisons') }}',)
             .then(response => {
                 console.log('Response status:', response.status);
                 console.log('Response headers:', response.headers);
@@ -456,7 +456,7 @@
                 const append = confirm("Do you want to append the imported history to the existing comparison history? If not, the existing history will be replaced.");
                 formData.append('append', append);
                 
-                fetch('/import_comparison_history', {
+                fetch('{{ url_for('import_comparison_history') }}', {
                     method: 'POST',
                     body: formData
                 })
@@ -499,7 +499,7 @@
         });
         
         document.getElementById('smartShuffleBtn').addEventListener('click', function() {
-            fetch('/smart_shuffle')
+            fetch('{{ url_for('smart_shuffle_route') }}',)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -524,7 +524,7 @@
                 if (comparisonCount >= 3) {
                     comparisonCount = 0;
                     try {
-                        const response = await fetch('/smart_shuffle');
+                        const response = await fetch('{{ url_for('smart_shuffle_route') }}',);
                         const data = await response.json();
                         if (data.success) {
                             console.log('Auto smart shuffle applied successfully!');
@@ -549,7 +549,7 @@
             if (excludeDownvoted) {
                 alert('Downvoted images will now be excluded from future comparisons.');
                 // Recalculate image pairs
-                fetch('/exclude_image', { 
+                fetch('{{ url_for('exclude_image') }}', { 
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -562,7 +562,7 @@
             } else {
                 alert('Downvoted images will no longer be excluded from future comparisons.');
                 excludedImages.clear();
-                fetch('/clear_excluded_images', { method: 'POST' })
+                fetch('{{ url_for('clear_excluded_images') }}', { method: 'POST' })
                 .then(() => {
                     loadImages();
                     updateRankings();
