@@ -1163,8 +1163,8 @@ button:active {
     background: white;
     width: 80%;
     max-width: 800px;
-    height: 500px;
-    margin: 10% auto;
+    height: 80vh;
+    margin: 5% auto;
     border-radius: 6px;
     display: flex;
     flex-direction: column;
@@ -1193,4 +1193,105 @@ button:active {
     font-size: 20px;
     border: none;
     background: none;
+}
+
+/* ============================ MOBILE RESPONSIVENESS ============================ */
+@media (max-width: 768px) {
+    .container {
+        display: flex;
+        flex-direction: column;
+        padding: 10px;
+    }
+
+    /* Reorder elements */
+    .progress-bar { order: 1; width: 100%; left: auto; margin-bottom: 10px; }
+    #progress-text { order: 2; visibility: visible; height: auto; margin-bottom: 5px; }
+    .image-comparison { order: 3; margin-top: 0; width: 100%; gap: 10px; }
+    .left-buttons { order: 4; }
+    .right-buttons { order: 5; }
+    .rankings { order: 6; margin-top: 20px; }
+
+    /* Image Comparison */
+    .images {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .images img {
+        width: 100%;
+        max-height: 35vh;
+        object-fit: contain;
+    }
+    .image-names {
+        display: none;
+    }
+
+    /* Buttons */
+    .buttons {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .button-group {
+        width: 100%;
+    }
+
+    /* Floating Buttons -> Static */
+    .left-buttons, .right-buttons {
+        position: static;
+        width: 100%;
+        align-items: center;
+        margin-top: 10px;
+        gap: 5px;
+    }
+    .right-buttons {
+        align-items: center;
+    }
+    .current-directory {
+        max-width: 100%;
+        text-align: center;
+    }
+
+    .modal-content {
+        width: 90%;
+        height: 90vh;
+        margin: 5%;
+    }
+
+    /* Rankings List */
+    #rankingsList li {
+        flex-wrap: wrap;
+        justify-content: center;
+        padding: 10px;
+        position: relative;
+    }
+    #rankingsList li .rank {
+        position: absolute;
+        top: 5px;
+        left: 5px;
+        font-size: 12px;
+        margin: 0;
+    }
+    #rankingsList li .remove-image-btn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        margin: 0;
+    }
+    #rankingsList li .image-name {
+        width: 100%;
+        text-align: center;
+        margin: 5px 0;
+    }
+    #rankingsList li .elo-uncertainty-container,
+    #rankingsList li .votes {
+        width: 100%;
+        justify-content: center;
+        margin: 2px 0;
+    }
+}
+
+@media (hover: none) {
+  button:hover {
+    background-color: transparent;
+    color: black;
+  }
 }
