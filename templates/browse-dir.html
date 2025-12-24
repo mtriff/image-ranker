@@ -50,7 +50,22 @@
       </div>
       <div>
         {% if folder.comparison_progress and folder.image_count %}
-        {{ (folder.comparison_progress / (folder.image_count * (folder.image_count - 1)//2) * 100) | round | int }}% Completed
+          {% set total_combinations = (folder.image_count * (folder.image_count - 1) // 2) %}
+          {% set percent = (folder.comparison_progress / total_combinations * 100) | round | int %}
+          {% set percent = 100 if percent > 100 else percent %}
+          {% if percent >= 100 %}
+            <span class="material-symbols-rounded" style="color: green; vertical-align: middle;">check_circle</span>
+          {% else %}
+            {% set icon = 10 %}
+            {% if percent >= 85 %}{% set icon = 90 %}
+            {% elif percent >= 70 %}{% set icon = 80 %}
+            {% elif percent >= 50 %}{% set icon = 60 %}
+            {% elif percent >= 30 %}{% set icon = 40 %}
+            {% elif percent >= 15 %}{% set icon = 20 %}
+            {% endif %}
+            <span class="material-symbols-rounded" style="vertical-align: middle;">clock_loader_{{ icon }}</span>
+          {% endif %}
+          {{ percent }}% Completed
         {% endif %}
       </div>
     </li>
