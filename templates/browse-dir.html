@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='browse-dir-style.css') }}">
+</head>
+<body>
+<div class="header">
+  <h4>Current Directory: /{{ current_path }}</h4>
+  <div class="header-actions">
+    <button class="main-btn select-folder-btn" onclick="selectFolder()">
+      <span class="material-symbols-rounded">upload</span>
+      Select this Directory
+      {% if images_in_current_folder | replace("+", "") | int > 0 %}
+      <br>
+      ({{images_in_current_folder}} Images)
+      {% endif %}
+    </button>
+    <div class="import-toggle-container {% if disable_import %}disabled{% endif %}">
+      <span class="import-label">Import previous comparisons to continue a ranking session.</span>
+      <label class="switch">
+        <input type="checkbox" id="importToggle" {% if not autosave_progress_file %}disabled{% endif %} {{ 'checked' if autosave_progress_file else '' }}>
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+</div>
+<ul>
+  {% if current_path %}
+    <li>
+      <a href="{{ url_for('browse_directory', path=current_path.rsplit('/', 1)[0] if current_path.count('/') > 0 else '') }}">
+        <span class="material-symbols-rounded">keyboard_return</span> Parent
+      </a>
+    </li>
+  {% endif %}
+  {% for folder in folders %}
+    <li class="folder-row">
+      <div>
+        <span class="material-symbols-rounded">folder</span>
+        <a href="{{ url_for('browse_directory', path=current_path ~ '/' ~ folder.folder if current_path else folder.folder) }}">
+          {{ folder.folder }}
+        </a>
+      </div>
+      <div class="folder-info">
+        {% if folder.image_count %}
+        <span class="material-symbols-rounded">image</span>
+        {{ folder.image_count }} images
+        {% endif %}
+      </div>
+      <div>
+        {% if folder.comparison_progress and folder.image_count %}
+        {{ (folder.comparison_progress / (folder.image_count * (folder.image_count - 1)//2) * 100) | round | int }}% Completed
+        {% endif %}
+      </div>
+    </li>
+  {% endfor %}
+</ul>
+<script>
+  function selectFolder() {
+    const path = "{{ current_path }}"
+    let autosaveProgressFile = "{{ autosave_progress_file }}"
+    const importToggleCheckbox = document.getElementById('importToggle');
+    if (!importToggleCheckbox.checked) {
+      autosaveProgressFile = null
+    }
+    window.parent.postMessage(
+      { selectedFolder: path, autosaveProgressFile: autosaveProgressFile },
+      "*"
+    )
+  }
+</script>
+</body>
+</html>

@@ -153,6 +153,19 @@
             <p>&copy; 2024 Image Ranker.</p>
         </div>
     </footer>
+
+    <!-- Modal -->
+    <div id="folderModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+            <h3>Select a directory for image comparison</h3>
+            <button class="major-icon-btn" onclick="closeModal()"><span class="material-symbols-rounded">close</span></button>
+            </div>
+            <div class="modal-body">
+            <iframe src="{{ url_for('browse_directory') }}"></iframe>
+            </div>
+        </div>
+    </div>
     
     <script>
         let currentImages = {};
@@ -162,14 +175,17 @@
             fetch('{{ url_for('get_images') }}',)
             .then(response => response.json())
             .then(data => {
+                if (!data) {
+                    return;
+                }
                 if (data.error) {
                     alert(data.error);
                     return;
                 }
                 console.log('Received image data:', data);
                 currentImages = data;
-                document.getElementById('image1').src = '/serve_image?path=' +  data.image1;
-                document.getElementById('image2').src = '/serve_image?path=' + data.image2;
+                document.getElementById('image1').src = '{{ url_for('serve_image') }}?path=' +  data.image1;
+                document.getElementById('image2').src = '{{ url_for('serve_image') }}?path=' + data.image2;
                 console.log('Image1 src:', data.image1);
                 console.log('Image2 src:', data.image2);
                 document.getElementById('image1-name').textContent = `Image A: ${decodeURIComponent(data.image1.split('=').pop().split('/').pop())}`;
@@ -248,7 +264,7 @@
                     const li = document.createElement('li');
                     let imgHtml;
                     if (display_count <= max_display) {
-                        imgHtml = `<img src="/serve_image?path=${item.image}" alt="Ranked image" class="ranking-image">`;
+                        imgHtml = `<img src="{{ url_for('serve_image') }}?path=${item.image}" alt="Ranked image" class="ranking-image">`;
                     } else {
                         imgHtml = `<div class="empty-image-placeholder">
                                        <span class="material-symbols-rounded">image</span>
@@ -332,10 +348,14 @@
         
         loadImages();
         updateRankings();
-        
-        document.getElementById('selectDirectoryBtn').addEventListener('click', function() {
+
+        function selectDirectory(path, autosaveProgressFile) {
             fetch('{{ url_for('select_directory') }}', {
-                method: 'POST'
+                method: 'POST',
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: "path=" + encodeURIComponent(path) + "&autosaveFile=" + encodeURIComponent(autosaveProgressFile)
             })
             .then(response => {
                 if (!response.ok) {
@@ -344,7 +364,7 @@
                 return response.json();
             })
             .then(data => {
-                if (data.success) {
+                if (data.success) {                        
                     alert('Directory selected successfully. Restarting ranking process...');
                     currentImages = {};
                     document.getElementById('rankingsList').innerHTML = '';
@@ -362,6 +382,10 @@
                 console.error('Error:', error);
                 alert('An error occurred while selecting the directory: ' + (error.message || error));
             });
+        }
+        
+        document.getElementById('selectDirectoryBtn').addEventListener('click', function() {
+            openModal();
         });
         
         // Function to load the current directory on page load
@@ -567,6 +591,21 @@
                     loadImages();
                     updateRankings();
                 });
+            }
+        });
+
+        function openModal() {
+            document.getElementById("folderModal").style.display = "block"
+        }
+
+        function closeModal() {
+            document.getElementById("folderModal").style.display = "none"
+        }
+
+        window.addEventListener("message", (event) => {
+            if (event.data.selectedFolder !== undefined) {
+                selectDirectory(event.data.selectedFolder, event.data.autosaveProgressFile);
+                closeModal()
             }
         });
     </script>

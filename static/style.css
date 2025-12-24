@@ -1146,3 +1146,51 @@ button:active {
     height: 320px; /* Set a fixed height */
     overflow: hidden; /* Hide overflow content */
 }
+
+/* ============================ MODAL STYLES ============================ */
+
+ /* Modal overlay */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+/* Modal box */
+.modal-content {
+    background: white;
+    width: 80%;
+    max-width: 800px;
+    height: 500px;
+    margin: 10% auto;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-body {
+    flex: 1;
+}
+
+.modal-body iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.close-btn {
+    cursor: pointer;
+    font-size: 20px;
+    border: none;
+    background: none;
+}
