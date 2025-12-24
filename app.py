@@ -251,7 +251,7 @@ def autosave_rankings():
 
 @app.route('/update_elo', methods=['POST'])
 def update_elo():
-    global comparisons_since_autosave
+    global comparisons_since_autosave, current_pair_index
     data = request.json
     winner = data['winner']
     loser = data['loser']
@@ -263,7 +263,7 @@ def update_elo():
     
     # Increment the counter and check if it's time to autosave
     comparisons_since_autosave += 1
-    if comparisons_since_autosave >= 10:
+    if comparisons_since_autosave >= 10 or current_pair_index >= len(image_pairs):
         autosave_rankings()
         comparisons_since_autosave = 0
     
