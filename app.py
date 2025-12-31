@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, Response
+from flask import Flask, render_template, request, jsonify, send_file, Response, abort
 import os
 import random
 import itertools
@@ -6,7 +6,8 @@ from elo import TrueSkillRanking
 import csv
 from io import StringIO
 import threading
-import logging
+from threading import Thread
+import time
 from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog
@@ -21,40 +22,67 @@ excluded_images = set()
 current_directory = None
 IMAGE_FOLDER = 'static/images'
 image_pairs_lock = threading.Lock()
-image_pairs = []
-current_pair_index = 0
-last_shown_image = None
-comparisons_since_autosave = 0
+comparisons_autosave_prefix = 'comparisons_autosave_'
 
-def get_image_paths():
+BASE_DIR = None
+current_directory = None
+
+def get_image_paths(folder, timeout=None, start_time=None, get_progress=False):
+    global comparisons_autosave_prefix
     image_paths = []
-    app.logger.debug(f"Searching for images in: {IMAGE_FOLDER}")
-    for root, dirs, files in os.walk(IMAGE_FOLDER):
+    comparison_progress = 0
+    for root, dirs, files in os.walk(folder):
+        if timeout is not None and start_time is not None:
+            if time.time() - start_time > timeout:
+                return [], None # Don't return incomplete list/incorrect progress count
+        comparison_progress_file = None
         for file in files:
-            if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.jfif', '.avif', '.heic', '.heif')):
-                # Get absolute path
-                abs_path = os.path.join(root, file)
-                if abs_path not in excluded_images:
-                    image_paths.append(abs_path)
-                    app.logger.debug(f"Found image: {abs_path}")
-    
-    if not image_paths:
-        app.logger.warning(f"No images found in {IMAGE_FOLDER}")
-    else:
-        app.logger.info(f"Found {len(image_paths)} images")
-    
-    return image_paths
+            if is_eligible_image(root, file):
+                image_paths.append(os.path.join(root, file).replace('\\', '/'))
+            elif (get_progress and file.startswith(comparisons_autosave_prefix) and
+                 (comparison_progress_file is None or file > comparison_progress_file)):
+                comparison_progress_file = file
+        if get_progress and comparison_progress_file:
+            newline_count = count_newlines_in_file(os.path.join(root, comparison_progress_file))
+            comparison_progress += max(newline_count - 1, 0) # Ignore header
+    return image_paths, comparison_progress
+
+def is_eligible_image(root, file):
+    if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.jfif', '.avif', '.heic', '.heif')):
+        image_path = os.path.join(root, file).replace('\\', '/')
+        if image_path not in excluded_images:
+            return True
+    return False
+
+def count_newlines_in_file(file):
+    count = 0
+    with open(file, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            count += chunk.count(b'\n')
+    return count
+
+def get_image_counts_in_folders(folders, timeout=0.5):
+    start_time = time.time()
+    results = []
+    total_image_count = 0
+    timed_out = False
+    for folder in folders:
+        image_count = None
+        comparison_progress = None
+        if time.time() - start_time < timeout:
+            paths, comparison_progress = get_image_paths(folder, timeout=timeout, start_time=start_time, get_progress=True)
+            image_count = len(paths)
+        else: 
+            timed_out = True
+        folder_name = os.path.basename(os.path.normpath(folder))
+        results.append({'folder': folder_name, 'image_count': image_count, 'comparison_progress': comparison_progress})
+        total_image_count += image_count or 0
+    return results, total_image_count, timed_out
 
 def initialize_image_pairs(a=False):
     global image_pairs, current_pair_index
-    image_paths = get_image_paths()
-    
-    if not image_paths:
-        app.logger.error("No images found to initialize pairs")
-        return
-        
-    app.logger.debug(f"Initializing pairs with {len(image_paths)} images")
-    
+    image_paths, _ = get_image_paths(IMAGE_FOLDER)
+    random.shuffle(image_paths)
     n = len(image_paths)
     initial_pairs = []
     for i in range(n):
@@ -76,6 +104,38 @@ def initialize_image_pairs(a=False):
     
     random.shuffle(image_pairs[n:])
     current_pair_index = 0
+
+
+def import_comparison_history_file(file, append):
+    global image_pairs
+
+    reader = csv.reader(file.read().decode('utf-8').splitlines())
+    next(reader)  # Skip header row
+
+    if not append:
+        elo_ranking.comparison_history = []
+        elo_ranking.recalculate_rankings()
+
+    pairs_to_add = set()
+    losers_to_remove = set()
+    pairs_to_remove = set()
+    for row in reader:
+        winner, loser = row
+        if winner == 'None':  # Handle cases where winner is None
+            losers_to_remove.add(loser)
+        else:
+            pairs_to_add.add((winner, loser))
+        # Collect pairs to remove
+        pairs_to_remove.add((winner, loser))
+        pairs_to_remove.add((loser, winner))
+
+    # Remove losers from image_pairs and elo_ranking
+    image_pairs = [(img1, img2) for img1, img2 in image_pairs if img1 not in losers_to_remove and img2 not in losers_to_remove]
+    elo_ranking.update_rating(pairs_to_add)
+    elo_ranking.remove_image(losers_to_remove)
+    
+    # Remove duplicate pairs from image_pairs
+    image_pairs = [(img1, img2) for img1, img2 in image_pairs if (img1, img2) not in pairs_to_remove]
 
 @app.route('/')
 def index():
@@ -116,8 +176,9 @@ def smart_shuffle_route():
     
 @app.route('/get_images')
 def get_images():
-    global current_pair_index
-    global last_shown_image
+    global current_pair_index, last_shown_image, current_directory
+    if not current_directory:
+        return jsonify(None), 200
 
     with image_pairs_lock:
         if current_pair_index >= len(image_pairs):
@@ -182,7 +243,7 @@ def serve_image():
         return jsonify({'error': str(e)}), 500
 
 def autosave_rankings():
-    global elo_ranking, current_directory
+    global elo_ranking, current_directory, comparisons_autosave_prefix
     
     if not current_directory:
         app.logger.warning("No image directory selected. Autosave aborted.")
@@ -208,7 +269,7 @@ def autosave_rankings():
     
     # Save comparisons
     comparisons = elo_ranking.comparison_history
-    comparisons_filename = os.path.join(current_directory, f'comparisons_autosave_{current_date}.csv')
+    comparisons_filename = os.path.join(current_directory, f'{comparisons_autosave_prefix}{current_date}.csv')
     with open(comparisons_filename, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['Winner', 'Loser'])
@@ -222,7 +283,7 @@ def autosave_rankings():
 
 @app.route('/update_elo', methods=['POST'])
 def update_elo():
-    global comparisons_since_autosave
+    global comparisons_since_autosave, current_pair_index
     data = request.json
     winner = data['winner']
     loser = data['loser']
@@ -234,7 +295,7 @@ def update_elo():
     
     # Increment the counter and check if it's time to autosave
     comparisons_since_autosave += 1
-    if comparisons_since_autosave >= 10:
+    if comparisons_since_autosave >= 10 or current_pair_index >= len(image_pairs):
         autosave_rankings()
         comparisons_since_autosave = 0
     
@@ -280,64 +341,30 @@ def set_directory():
     global IMAGE_FOLDER, current_directory, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave
     
     try:
-        data = request.json
-        directory = data.get('directory')
-        
-        if not directory:
-            return jsonify({'success': False, 'error': 'No directory provided'}), 400
-        
-        # Get the absolute path of the current working directory
-        cwd = os.getcwd()
-        
-        # If we receive a relative path from the file input
-        if not os.path.isabs(directory):
-            # First try to find the directory in the current working directory
-            potential_path = os.path.join(cwd, directory)
-            if os.path.exists(potential_path):
-                directory = potential_path
-            else:
-                # Try to find the directory in the parent directory
-                parent_dir = os.path.dirname(cwd)
-                potential_path = os.path.join(parent_dir, directory)
-                if os.path.exists(potential_path):
-                    directory = potential_path
-        
-        # Normalize the path (converts slashes to the correct format for the OS)
-        directory = os.path.normpath(directory)
-        
-        app.logger.debug(f"Attempting to set directory to: {directory}")
-        
-        if not os.path.exists(directory):
-            # Try to find the directory by walking up the directory tree
-            current_path = cwd
-            while current_path != os.path.dirname(current_path):  # Stop at root directory
-                potential_path = os.path.join(current_path, directory)
-                if os.path.exists(potential_path):
-                    directory = potential_path
-                    break
-                current_path = os.path.dirname(current_path)
-        
-        if not os.path.exists(directory):
-            app.logger.error(f"Directory does not exist: {directory}")
-            return jsonify({'success': False, 'error': f'Directory does not exist: {directory}'}), 400
-            
-        if not os.path.isdir(directory):
-            app.logger.error(f"Not a directory: {directory}")
-            return jsonify({'success': False, 'error': f'Not a directory: {directory}'}), 400
-            
-        # Update directory paths
-        IMAGE_FOLDER = directory
-        current_directory = directory
-        
-        app.logger.info(f"Successfully set directory to: {directory}")
-        
-        # Reset the ranking system
-        elo_ranking = TrueSkillRanking()
-        initialize_image_pairs()
-        current_pair_index = 0
-        comparisons_since_autosave = 0
-        
-        return jsonify({'success': True, 'directory': directory})
+        rel_path = request.form["path"]
+        rel_autosave_path = request.form["autosaveFile"]
+
+        directory = os.path.join(BASE_DIR, rel_path)
+
+        if directory:
+            global IMAGE_FOLDER, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave, current_directory
+            if not directory.startswith(BASE_DIR):
+                abort(403)
+
+            IMAGE_FOLDER = directory
+            current_directory = directory  # Save the selected directory
+            elo_ranking = TrueSkillRanking()  # Reset the ELO rankings
+            initialize_image_pairs()
+            current_pair_index = 0  # Reset the current pair index
+            comparisons_since_autosave = 0  # Reset the autosave counter
+            if rel_autosave_path:
+                autosave_file = os.path.join(BASE_DIR, rel_autosave_path)
+                if os.path.exists(autosave_file):
+                    with open(autosave_file, 'rb') as file:
+                        import_comparison_history_file(file, True)
+            return jsonify({'success': True, 'directory': directory})
+        else:
+            return jsonify({'success': False, 'error': 'No directory selected'})
     except Exception as e:
         app.logger.error(f"Error in set_directory: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -407,38 +434,10 @@ def export_comparisons():
 
 @app.route('/import_comparison_history', methods=['POST'])
 def import_comparison_history():
-    global image_pairs
     file = request.files['file']
     append = request.form.get('append', 'false') == 'true'
 
-    reader = csv.reader(file.read().decode('utf-8').splitlines())
-    next(reader)  # Skip header row
-
-    if not append:
-        elo_ranking.comparison_history = []
-        elo_ranking.recalculate_rankings()
-
-    pairs_to_add = set()
-    losers_to_remove = set()
-    pairs_to_remove = set()
-    for row in reader:
-        winner, loser = row
-        if winner == 'None':  # Handle cases where winner is None
-            losers_to_remove.add(loser)
-        else:
-            pairs_to_add.add((winner, loser))
-        # Collect pairs to remove
-        pairs_to_remove.add((winner, loser))
-        pairs_to_remove.add((loser, winner))
-
-    # Remove losers from image_pairs and elo_ranking
-    image_pairs = [(img1, img2) for img1, img2 in image_pairs if img1 not in losers_to_remove and img2 not in losers_to_remove]
-    elo_ranking.update_rating(pairs_to_add)
-    elo_ranking.remove_image(losers_to_remove)
-    
-    # Remove duplicate pairs from image_pairs
-    image_pairs = [(img1, img2) for img1, img2 in image_pairs if (img1, img2) not in pairs_to_remove]
-
+    import_comparison_history_file(file, append)
     return jsonify({'success': True})
 
 @app.route('/exclude_image', methods=['POST'])
@@ -464,6 +463,40 @@ def clear_excluded_images():
 def get_current_directory():
     global current_directory
     return jsonify({'directory': current_directory if current_directory else None})
+
+@app.route("/browse_directory")
+def browse_directory():
+    global BASE_DIR
+    if 'BASE_DIR' not in os.environ:
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    else:
+        BASE_DIR = os.environ['BASE_DIR']
+    rel_path = request.args.get("path", "")
+    abs_path = os.path.normpath(os.path.join(BASE_DIR, rel_path))
+    if not abs_path.startswith(BASE_DIR):
+        abort(403)
+    all_files = os.listdir(abs_path)
+    folders = [
+        d for d in all_files
+        if os.path.isdir(os.path.join(abs_path, d))
+    ]
+    autosave_progress_files = [f for f in all_files if f.startswith(comparisons_autosave_prefix)]
+    autosave_progress_file = None
+    if len(autosave_progress_files):
+        autosave_progress_file = os.path.join(abs_path, max(autosave_progress_files))
+    if len(folders):
+        folders, total_image_count, timed_out = get_image_counts_in_folders([os.path.join(abs_path, folder) for folder in folders])
+        if timed_out:
+            total_image_count = str(total_image_count) + '+'
+    else:
+        total_image_count = len([f for f in all_files if is_eligible_image(abs_path, f)])
+    return render_template(
+        "browse-dir.html",
+        folders=folders,
+        current_path=rel_path,
+        images_in_current_folder=total_image_count,
+        autosave_progress_file=autosave_progress_file
+    )
 
 if __name__ == '__main__':
     initialize_image_pairs()

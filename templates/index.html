@@ -153,33 +153,43 @@
             <p>&copy; 2024 Image Ranker.</p>
         </div>
     </footer>
+
+    <!-- Modal -->
+    <div id="folderModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+            <h3>Select a directory for image comparison</h3>
+            <button class="major-icon-btn" onclick="closeModal()"><span class="material-symbols-rounded">close</span></button>
+            </div>
+            <div class="modal-body">
+            <iframe src="{{ url_for('browse_directory') }}"></iframe>
+            </div>
+        </div>
+    </div>
     
     <script>
         let currentImages = {};
         let max_display = 30;
         
         function loadImages() {
-            fetch('/get_images')
+            fetch('{{ url_for('get_images') }}',)
             .then(response => response.json())
             .then(data => {
+                if (!data) {
+                    return;
+                }
                 if (data.error) {
                     alert(data.error);
                     return;
                 }
                 console.log('Received image data:', data);
                 currentImages = data;
-                
-                // Update image sources
-                const image1 = document.getElementById('image1');
-                const image2 = document.getElementById('image2');
-                
-                image1.src = `/serve_image?path=${encodeURIComponent(data.image1)}`;
-                image2.src = `/serve_image?path=${encodeURIComponent(data.image2)}`;
-                
-                // Update image names
-                document.getElementById('image1-name').textContent = `Image A: ${data.image1.split('/').pop()}`;
-                document.getElementById('image2-name').textContent = `Image B: ${data.image2.split('/').pop()}`;
-                
+                document.getElementById('image1').src = '{{ url_for('serve_image') }}?path=' +  data.image1;
+                document.getElementById('image2').src = '{{ url_for('serve_image') }}?path=' + data.image2;
+                console.log('Image1 src:', data.image1);
+                console.log('Image2 src:', data.image2);
+                document.getElementById('image1-name').textContent = `Image A: ${decodeURIComponent(data.image1.split('=').pop().split('/').pop())}`;
+                document.getElementById('image2-name').textContent = `Image B: ${decodeURIComponent(data.image2.split('=').pop().split('/').pop())}`;
                 updateProgress(data.progress);
             })
             .catch(error => {
@@ -195,7 +205,7 @@
             const winner = currentImages[winnerImage];
             const loser = winnerImage === 'image1' ? currentImages.image2 : currentImages.image1;
             
-            fetch('/update_elo', {
+            fetch('{{ url_for('update_elo') }}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -225,7 +235,7 @@
             }
             if (confirmation) {
                 console.error("fetching")
-                fetch('/remove_image', {
+                fetch('{{ url_for('remove_image') }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -244,7 +254,7 @@
         
         function updateRankings() {
             display_count = 0
-            fetch('/get_rankings')
+            fetch('{{ url_for('get_rankings') }}',)
             .then(response => response.json())
             .then(data => {
                 const rankingsList = document.getElementById('rankingsList');
@@ -254,7 +264,7 @@
                     const li = document.createElement('li');
                     let imgHtml;
                     if (display_count <= max_display) {
-                        imgHtml = `<img src="/serve_image?path=${item.image}" alt="Ranked image" class="ranking-image">`;
+                        imgHtml = `<img src="{{ url_for('serve_image') }}?path=${item.image}" alt="Ranked image" class="ranking-image">`;
                     } else {
                         imgHtml = `<div class="empty-image-placeholder">
                                        <span class="material-symbols-rounded">image</span>
@@ -338,60 +348,45 @@
         
         loadImages();
         updateRankings();
-        
-        document.getElementById('selectDirectoryBtn').addEventListener('click', function() {
-            const directoryInput = document.createElement('input');
-            directoryInput.type = 'file';
-            directoryInput.webkitdirectory = true;
-            directoryInput.multiple = true;
-            
-            directoryInput.addEventListener('change', function() {
-                if (directoryInput.files.length > 0) {
-                    // Get the full path of the first file
-                    const file = directoryInput.files[0];
-                    const fullPath = file.path || file.webkitRelativePath;
-                    // Get the directory path (everything before the last slash)
-                    const directoryPath = fullPath.split('/').slice(0, -1).join('/');
-                    
-                    console.log('Selected directory:', directoryPath);  // Debug log
-                    
-                    fetch('/set_directory', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ directory: directoryPath })
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            return response.json().then(data => {
-                                throw new Error(data.error || 'Failed to set directory');
-                            });
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        if (data.success) {
-                            console.log('Directory set successfully:', data.directory);
-                            window.location.reload();  // Force a complete page reload
-                        } else {
-                            console.error('Error response:', data);
-                            alert('Error selecting directory: ' + data.error);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Error selecting directory: ' + error.message);
-                    });
+
+        function selectDirectory(path, autosaveProgressFile) {
+            fetch('{{ url_for('select_directory') }}', {
+                method: 'POST',
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: "path=" + encodeURIComponent(path) + "&autosaveFile=" + encodeURIComponent(autosaveProgressFile)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => { throw err; });
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {                        
+                    alert('Directory selected successfully. Restarting ranking process...');
+                    currentImages = {};
+                    document.getElementById('rankingsList').innerHTML = '';
+                    document.getElementById('progress-fill').style.width = '0%';
+                    document.getElementById('progress-text').textContent = 'Progress: 0 / 0 comparisons';
+                    loadImages();
+                    updateRankings();
+                    // Update the current directory display
+                    document.getElementById('currentDirectory').textContent = 'Image Directory: ' + data.directory;
+                } else {
+                    throw new Error(data.error || 'Unknown error occurred');
                 }
             });
-            
-            directoryInput.click();
+        }
+        
+        document.getElementById('selectDirectoryBtn').addEventListener('click', function() {
+            openModal();
         });
         
         // Function to load the current directory on page load
         function loadCurrentDirectory() {
-            fetch('/get_current_directory')
+            fetch('{{ url_for('get_current_directory') }}',)
             .then(response => response.json())
             .then(data => {
                 if (data.directory) {
@@ -410,7 +405,7 @@
         window.addEventListener('load', loadCurrentDirectory);
         
         document.getElementById('exportRankingsBtn').addEventListener('click', function() {
-            fetch('/export_rankings')
+            fetch('{{ url_for('export_rankings') }}',)
             .then(response => {
                 console.log('Response status:', response.status);
                 console.log('Response headers:', response.headers);
@@ -440,7 +435,7 @@
         });
         
         document.getElementById('export-comparisons-btn').addEventListener('click', function() {
-            fetch('/export_comparisons')
+            fetch('{{ url_for('export_comparisons') }}',)
             .then(response => {
                 console.log('Response status:', response.status);
                 console.log('Response headers:', response.headers);
@@ -481,7 +476,7 @@
                 const append = confirm("Do you want to append the imported history to the existing comparison history? If not, the existing history will be replaced.");
                 formData.append('append', append);
                 
-                fetch('/import_comparison_history', {
+                fetch('{{ url_for('import_comparison_history') }}', {
                     method: 'POST',
                     body: formData
                 })
@@ -524,7 +519,7 @@
         });
         
         document.getElementById('smartShuffleBtn').addEventListener('click', function() {
-            fetch('/smart_shuffle')
+            fetch('{{ url_for('smart_shuffle_route') }}',)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
@@ -549,7 +544,7 @@
                 if (comparisonCount >= 3) {
                     comparisonCount = 0;
                     try {
-                        const response = await fetch('/smart_shuffle');
+                        const response = await fetch('{{ url_for('smart_shuffle_route') }}',);
                         const data = await response.json();
                         if (data.success) {
                             console.log('Auto smart shuffle applied successfully!');
@@ -574,7 +569,7 @@
             if (excludeDownvoted) {
                 alert('Downvoted images will now be excluded from future comparisons.');
                 // Recalculate image pairs
-                fetch('/exclude_image', { 
+                fetch('{{ url_for('exclude_image') }}', { 
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -587,42 +582,28 @@
             } else {
                 alert('Downvoted images will no longer be excluded from future comparisons.');
                 excludedImages.clear();
-                fetch('/clear_excluded_images', { method: 'POST' })
+                fetch('{{ url_for('clear_excluded_images') }}', { method: 'POST' })
                 .then(() => {
                     loadImages();
                     updateRankings();
                 });
             }
         });
-        
-        // Add this function to handle manual directory input
-        function handleDirectoryInput() {
-            const directoryPath = prompt("Please enter the full directory path:");
-            if (directoryPath) {
-                fetch('/set_directory', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ directory: directoryPath })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        // Handle successful directory selection
-                        console.log('Directory set successfully:', data.directory);
-                        // Refresh the page or update the UI as needed
-                        location.reload();
-                    } else {
-                        alert('Error setting directory: ' + data.error);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error setting directory');
-                });
-            }
+
+        function openModal() {
+            document.getElementById("folderModal").style.display = "block"
         }
+
+        function closeModal() {
+            document.getElementById("folderModal").style.display = "none"
+        }
+
+        window.addEventListener("message", (event) => {
+            if (event.data.selectedFolder !== undefined) {
+                selectDirectory(event.data.selectedFolder, event.data.autosaveProgressFile);
+                closeModal()
+            }
+        });
     </script>
 </body>
 </html>
