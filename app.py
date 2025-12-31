@@ -8,9 +8,9 @@ from io import StringIO
 import threading
 import logging
 from datetime import datetime
-import tkinter as tk
-from tkinter import filedialog
 import platform
+import queue
+import subprocess
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -464,6 +464,102 @@ def clear_excluded_images():
 def get_current_directory():
     global current_directory
     return jsonify({'directory': current_directory if current_directory else None})
+
+@app.route('/health')
+def health():
+    """Simple health check endpoint"""
+    return jsonify({'status': 'ok', 'platform': platform.system()})
+
+@app.route('/select_directory_dialog', methods=['GET'])
+def select_directory_dialog():
+    """
+    Opens a native directory picker dialog on the server side using AppleScript.
+    This is necessary on macOS because browsers don't provide real paths from file inputs.
+    """
+    app.logger.info("select_directory_dialog endpoint called")
+    try:
+        if platform.system() != 'Darwin':
+            app.logger.warning("select_directory_dialog called on non-macOS system")
+            return jsonify({'success': False, 'error': 'This endpoint is only available on macOS'}), 400
+        
+        # Use AppleScript to open a native directory picker
+        applescript = '''
+        tell application "System Events"
+            activate
+        end tell
+        set theFolder to choose folder with prompt "Select Image Directory"
+        return POSIX path of theFolder
+        '''
+        
+        app.logger.debug("Running AppleScript to open directory picker")
+        try:
+            # Run the AppleScript command
+            result = subprocess.run(
+                ['osascript', '-e', applescript],
+                capture_output=True,
+                text=True,
+                timeout=120  # Increased timeout to 2 minutes
+            )
+            
+            app.logger.debug(f"AppleScript return code: {result.returncode}")
+            app.logger.debug(f"AppleScript stdout: {result.stdout}")
+            app.logger.debug(f"AppleScript stderr: {result.stderr}")
+            
+            if result.returncode != 0:
+                # User cancelled or error occurred
+                error_msg = result.stderr.strip() if result.stderr else 'Unknown error'
+                if 'User canceled' in error_msg or 'canceled' in error_msg.lower():
+                    app.logger.info("User cancelled directory selection")
+                    return jsonify({'success': False, 'error': 'Directory selection cancelled'}), 400
+                else:
+                    app.logger.error(f"AppleScript error: {error_msg}")
+                    return jsonify({'success': False, 'error': f'Error opening directory dialog: {error_msg}'}), 500
+            
+            directory = result.stdout.strip()
+            
+            if not directory:
+                app.logger.warning("AppleScript returned empty directory")
+                return jsonify({'success': False, 'error': 'No directory selected'}), 400
+            
+            app.logger.info(f"Directory selected via AppleScript: {directory}")
+            
+        except subprocess.TimeoutExpired:
+            app.logger.error("Directory selection timed out")
+            return jsonify({'success': False, 'error': 'Directory selection timed out'}), 400
+        except Exception as e:
+            app.logger.error(f"Error running AppleScript: {str(e)}")
+            return jsonify({'success': False, 'error': f'Error opening directory dialog: {str(e)}'}), 500
+        
+        # Normalize the path
+        directory = os.path.normpath(directory)
+        
+        if not os.path.exists(directory):
+            app.logger.error(f"Selected directory does not exist: {directory}")
+            return jsonify({'success': False, 'error': f'Directory does not exist: {directory}'}), 400
+        
+        if not os.path.isdir(directory):
+            app.logger.error(f"Selected path is not a directory: {directory}")
+            return jsonify({'success': False, 'error': f'Not a directory: {directory}'}), 400
+        
+        # Now set the directory using the same logic as set_directory
+        global IMAGE_FOLDER, current_directory, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave
+        
+        IMAGE_FOLDER = directory
+        current_directory = directory
+        
+        app.logger.info(f"Successfully set directory to: {directory}")
+        
+        # Reset the ranking system
+        elo_ranking = TrueSkillRanking()
+        initialize_image_pairs()
+        current_pair_index = 0
+        comparisons_since_autosave = 0
+        
+        return jsonify({'success': True, 'directory': directory})
+        
+    except Exception as e:
+        app.logger.error(f"Error in select_directory_dialog: {str(e)}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     initialize_image_pairs()
