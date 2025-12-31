@@ -340,30 +340,32 @@
         updateRankings();
         
         document.getElementById('selectDirectoryBtn').addEventListener('click', function() {
-            // Detect macOS - use server-side dialog for macOS
-            const isMacOS = navigator.platform.toUpperCase().indexOf('MAC') >= 0 || 
-                           navigator.userAgent.toUpperCase().indexOf('MAC') >= 0;
+            const directoryInput = document.createElement('input');
+            directoryInput.type = 'file';
+            directoryInput.webkitdirectory = true;
+            directoryInput.multiple = true;
             
-            if (isMacOS) {
-                // Use server-side directory picker for macOS
-                console.log('macOS detected, using server-side directory picker');
-                fetch('/select_directory_dialog', {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                })
+            directoryInput.addEventListener('change', function() {
+                if (directoryInput.files.length > 0) {
+                    // Get the full path of the first file
+                    const file = directoryInput.files[0];
+                    const fullPath = file.path || file.webkitRelativePath;
+                    // Get the directory path (everything before the last slash)
+                    const directoryPath = fullPath.split('/').slice(0, -1).join('/');
+                    
+                    console.log('Selected directory:', directoryPath);  // Debug log
+                    
+                    fetch('/set_directory', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ directory: directoryPath })
+                    })
                     .then(response => {
-                        console.log('Response status:', response.status);
                         if (!response.ok) {
                             return response.json().then(data => {
-                                throw new Error(data.error || 'Failed to select directory');
-                            }).catch(err => {
-                                // If response isn't JSON, use the status text
-                                if (err.message === 'Failed to select directory' && !response.headers.get('content-type')?.includes('application/json')) {
-                                    throw new Error(`Server error: ${response.status} ${response.statusText}`);
-                                }
-                                throw err;
+                                throw new Error(data.error || 'Failed to set directory');
                             });
                         }
                         return response.json();
@@ -379,62 +381,12 @@
                     })
                     .catch(error => {
                         console.error('Error:', error);
-                        if (error.message.includes('Failed to fetch')) {
-                            alert('Error: Could not connect to server. Please make sure the Flask server is running and restart it if you just updated the code.');
-                        } else {
-                            alert('Error selecting directory: ' + error.message);
-                        }
+                        alert('Error selecting directory: ' + error.message);
                     });
-            } else {
-                // Use browser file input for other platforms
-                const directoryInput = document.createElement('input');
-                directoryInput.type = 'file';
-                directoryInput.webkitdirectory = true;
-                directoryInput.multiple = true;
-                
-                directoryInput.addEventListener('change', function() {
-                    if (directoryInput.files.length > 0) {
-                        // Get the full path of the first file
-                        const file = directoryInput.files[0];
-                        const fullPath = file.path || file.webkitRelativePath;
-                        // Get the directory path (everything before the last slash)
-                        const directoryPath = fullPath.split('/').slice(0, -1).join('/');
-                        
-                        console.log('Selected directory:', directoryPath);  // Debug log
-                        
-                        fetch('/set_directory', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ directory: directoryPath })
-                        })
-                        .then(response => {
-                            if (!response.ok) {
-                                return response.json().then(data => {
-                                    throw new Error(data.error || 'Failed to set directory');
-                                });
-                            }
-                            return response.json();
-                        })
-                        .then(data => {
-                            if (data.success) {
-                                console.log('Directory set successfully:', data.directory);
-                                window.location.reload();  // Force a complete page reload
-                            } else {
-                                console.error('Error response:', data);
-                                alert('Error selecting directory: ' + data.error);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error:', error);
-                            alert('Error selecting directory: ' + error.message);
-                        });
-                    }
-                });
-                
-                directoryInput.click();
-            }
+                }
+            });
+            
+            directoryInput.click();
         });
         
         // Function to load the current directory on page load
