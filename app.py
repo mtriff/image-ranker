@@ -11,6 +11,7 @@ import time
 from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog
+import logging
 import platform
 
 logging.basicConfig(level=logging.DEBUG)
@@ -19,13 +20,16 @@ logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 elo_ranking = TrueSkillRanking()
 excluded_images = set()
-current_directory = None
 IMAGE_FOLDER = 'static/images'
 image_pairs_lock = threading.Lock()
 comparisons_autosave_prefix = 'comparisons_autosave_'
 
 BASE_DIR = None
 current_directory = None
+
+image_pairs = []
+current_pair_index = 0
+last_shown_image = None
 
 def get_image_paths(folder, timeout=None, start_time=None, get_progress=False):
     global comparisons_autosave_prefix
@@ -176,7 +180,7 @@ def smart_shuffle_route():
     
 @app.route('/get_images')
 def get_images():
-    global current_pair_index, last_shown_image, current_directory
+    global current_pair_index, last_shown_image, current_directory, image_pairs
     if not current_directory:
         return jsonify(None), 200
 
@@ -285,6 +289,8 @@ def autosave_rankings():
 def update_elo():
     global comparisons_since_autosave, current_pair_index
     data = request.json
+    if not data or 'winner' not in data or 'loser' not in data:
+        return jsonify({'error': 'Missing winner or loser in request'}), 400
     winner = data['winner']
     loser = data['loser']
     elo_ranking.update_rating((winner, loser))
@@ -499,5 +505,11 @@ def browse_directory():
     )
 
 if __name__ == '__main__':
+    # Set current_directory to IMAGE_FOLDER (absolute path) on startup
+    if not os.path.isabs(IMAGE_FOLDER):
+        # Convert relative path to absolute
+        current_directory = os.path.abspath(IMAGE_FOLDER)
+    else:
+        current_directory = IMAGE_FOLDER
     initialize_image_pairs()
     app.run(debug=False, threaded=True)

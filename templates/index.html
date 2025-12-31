@@ -350,7 +350,7 @@
         updateRankings();
 
         function selectDirectory(path, autosaveProgressFile) {
-            fetch('{{ url_for('select_directory') }}', {
+            fetch('{{ url_for('set_directory') }}', {
                 method: 'POST',
                 headers: {
                     "Content-Type": "application/x-www-form-urlencoded"
