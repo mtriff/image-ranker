@@ -5,18 +5,21 @@ import itertools
 from elo import TrueSkillRanking
 import csv
 from io import StringIO
-import logging
 import threading
 from threading import Thread
 import time
 from datetime import datetime
+import tkinter as tk
+from tkinter import filedialog
+import platform
 
 logging.basicConfig(level=logging.DEBUG)
 
+# Global variables
 app = Flask(__name__)
 elo_ranking = TrueSkillRanking()
 excluded_images = set()
-
+current_directory = None
 IMAGE_FOLDER = 'static/images'
 image_pairs_lock = threading.Lock()
 comparisons_autosave_prefix = 'comparisons_autosave_'
@@ -76,10 +79,6 @@ def get_image_counts_in_folders(folders, timeout=0.5):
         total_image_count += image_count or 0
     return results, total_image_count, timed_out
 
-image_pairs = []
-current_pair_index = 0
-last_shown_image = None
-
 def initialize_image_pairs(a=False):
     global image_pairs, current_pair_index
     image_paths, _ = get_image_paths(IMAGE_FOLDER)
@@ -89,11 +88,20 @@ def initialize_image_pairs(a=False):
     for i in range(n):
         pair = (image_paths[i], image_paths[(i+1) % n])
         initial_pairs.append(pair)
+    
+    app.logger.debug(f"Created {len(initial_pairs)} initial pairs")
+    
     random.shuffle(initial_pairs)
     remaining_pairs = list(itertools.combinations(image_paths, 2))
     remaining_pairs = [pair for pair in remaining_pairs if pair not in initial_pairs]
+    
+    app.logger.debug(f"Created {len(remaining_pairs)} remaining pairs")
+    
     image_pairs = initial_pairs + remaining_pairs
     image_pairs = [pair for pair in image_pairs if pair[0] not in excluded_images and pair[1] not in excluded_images]
+    
+    app.logger.info(f"Total pairs created: {len(image_pairs)}")
+    
     random.shuffle(image_pairs[n:])
     current_pair_index = 0
 
@@ -197,18 +205,42 @@ def get_images():
 
 @app.route('/serve_image')
 def serve_image():
-    image_path = request.args.get('path')
-    if image_path.startswith('/serve_image'):
-        image_path = image_path.split('=', 1)[1]
-    file_extension = os.path.splitext(image_path)[1].lower()
-    if file_extension == '.webp':
-        mimetype = 'image/webp'
-    else:
-        mimetype = 'image/jpeg'
-    return send_file(image_path, mimetype=mimetype)
-
-# Add this global variable to keep track of comparisons since last autosave
-comparisons_since_autosave = 0
+    try:
+        image_path = request.args.get('path')
+        if not image_path:
+            return jsonify({'error': 'No image path provided'}), 400
+            
+        # Remove any URL encoding from the path
+        image_path = os.path.normpath(image_path)
+        
+        # If the path is relative to IMAGE_FOLDER, make it absolute
+        if not os.path.isabs(image_path):
+            image_path = os.path.join(IMAGE_FOLDER, os.path.basename(image_path))
+        
+        app.logger.debug(f"Attempting to serve image: {image_path}")
+        
+        # Check if the file exists
+        if not os.path.exists(image_path):
+            app.logger.error(f"Image not found: {image_path}")
+            return jsonify({'error': 'Image not found'}), 404
+            
+        file_extension = os.path.splitext(image_path)[1].lower()
+        if file_extension == '.webp':
+            mimetype = 'image/webp'
+        elif file_extension in ['.jpg', '.jpeg']:
+            mimetype = 'image/jpeg'
+        elif file_extension == '.png':
+            mimetype = 'image/png'
+        elif file_extension == '.gif':
+            mimetype = 'image/gif'
+        else:
+            mimetype = 'image/jpeg'  # default
+            
+        app.logger.debug(f"Serving image with mimetype: {mimetype}")
+        return send_file(image_path, mimetype=mimetype)
+    except Exception as e:
+        app.logger.error(f"Error serving image: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 def autosave_rankings():
     global elo_ranking, current_directory, comparisons_autosave_prefix
@@ -304,8 +336,10 @@ def get_progress():
         'total': len(image_pairs)
     })
 
-@app.route('/select_directory', methods=['POST'])
-def select_directory():
+@app.route('/set_directory', methods=['POST'])
+def set_directory():
+    global IMAGE_FOLDER, current_directory, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave
+    
     try:
         rel_path = request.form["path"]
         rel_autosave_path = request.form["autosaveFile"]
@@ -332,6 +366,7 @@ def select_directory():
         else:
             return jsonify({'success': False, 'error': 'No directory selected'})
     except Exception as e:
+        app.logger.error(f"Error in set_directory: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/export_rankings')
