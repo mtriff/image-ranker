@@ -57,6 +57,9 @@
                         </button>
                     </div>
                 </div>
+                <button id="skip-btn" onclick="skipPair()" class="major-icon-btn" title="Skip this pair (Press S or Down Arrow)">
+                    <span class="material-symbols-rounded">step_over</span>
+                </button>
                 <div class="button-group">
                     <div class="action-buttons">
                         <button id="image2-btn" onclick="selectWinner('image2')">Image B is better <span class="shortcut">(Press 2 or right arrow)</span></button>
@@ -226,6 +229,19 @@
             });
         }
         
+        function skipPair() {
+            playClickSound();
+            fetch('{{ url_for('skip_pair') }}', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadImages();
+                }
+            });
+        }
+
         function removeImage(img_path) {
             const confirmation = confirm(`Are you sure you want to remove ${img_path.split('/').pop()}? This will remove all remaining pairs that include this image.`);
             if (!confirmation) return;
@@ -515,6 +531,9 @@
             } else if (event.key === '2' || event.key === 'ArrowRight') {
                 selectWinner('image2');
                 animateButton('image2-btn');
+            } else if (event.key === 's' || event.key === 'S' || event.key === 'ArrowDown') {
+                skipPair();
+                animateButton('skip-btn');
             }
         });
         

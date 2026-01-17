@@ -91,13 +91,16 @@ def initialize_image_pairs(a=False):
     initial_pairs = []
     for i in range(n):
         pair = (image_paths[i], image_paths[(i+1) % n])
-        initial_pairs.append(pair)
+        if (pair[1], pair[0]) not in initial_pairs:
+            initial_pairs.append(pair)
     
     app.logger.debug(f"Created {len(initial_pairs)} initial pairs")
     
     random.shuffle(initial_pairs)
     remaining_pairs = list(itertools.combinations(image_paths, 2))
-    remaining_pairs = [pair for pair in remaining_pairs if pair not in initial_pairs]
+    
+    initial_pairs_set = set(initial_pairs) | set((p[1], p[0]) for p in initial_pairs)
+    remaining_pairs = [pair for pair in remaining_pairs if pair not in initial_pairs_set]
     
     app.logger.debug(f"Created {len(remaining_pairs)} remaining pairs")
     
@@ -192,6 +195,7 @@ def get_images():
         if last_shown_image is not None:
             if img1 == last_shown_image:
                 img1, img2 = img2, img1
+                app.logger.debug(f"Swapped display order: {os.path.basename(img1)} vs {os.path.basename(img2)}")
             elif img2 == last_shown_image:
                 pass
         last_shown_image = img1
@@ -306,6 +310,21 @@ def update_elo():
         comparisons_since_autosave = 0
     
     return jsonify({'success': True})
+
+@app.route('/skip_pair', methods=['POST'])
+def skip_pair():
+    global current_pair_index, image_pairs, current_directory
+    if not current_directory:
+        return jsonify({'error': 'No directory selected'}), 400
+
+    with image_pairs_lock:
+        if current_pair_index > 0 and current_pair_index <= len(image_pairs):
+            pair = image_pairs.pop(current_pair_index - 1)
+            image_pairs.append(pair)
+            current_pair_index -= 1
+            app.logger.info(f"Skipped pair: {pair}")
+            return jsonify({'success': True})
+        return jsonify({'error': 'No pair to skip'}), 400
 
 @app.route('/remove_image', methods=['POST'])
 def remove_image():
