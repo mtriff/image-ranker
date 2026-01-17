@@ -200,8 +200,8 @@ def get_images():
                 pass
         last_shown_image = img1
         current_pair_index += 1
-        total_pairs = len(image_pairs)
         completed_pairs = len(elo_ranking.comparison_history)
+        total_pairs = len(image_pairs) + completed_pairs - current_pair_index + 1
     return jsonify({
         'image1':  img1,
         'image2':  img2,
