@@ -182,7 +182,16 @@
                     return;
                 }
                 if (data.error) {
-                    alert(data.error);
+                    if (data.error === 'All comparisons completed in get_images') {
+                        fetch('{{ url_for('get_progress') }}')
+                        .then(response => response.json())
+                        .then(progress => {
+                            updateProgress(progress);
+                            alert('All comparisons completed!');
+                        });
+                    } else {
+                        alert(data.error);
+                    }
                     return;
                 }
                 console.log('Received image data:', data);
@@ -357,9 +366,9 @@
         function updateProgress(progress) {
             const progressFill = document.getElementById('progress-fill');
             const progressText = document.getElementById('progress-text');
-            const percentage = (progress.current / progress.total) * 100;
+            const percentage = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
             progressFill.style.width = `${percentage}%`;
-            progressText.textContent = `Progress: ${progress.current} / ${progress.total} comparisons`;
+            progressText.textContent = `Progress: ${progress.current} / ${progress.total} comparisons completed (${Math.round(percentage)}%)`;
         }
         
         loadImages();
