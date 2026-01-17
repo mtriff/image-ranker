@@ -1233,6 +1233,10 @@ button:active {
     .button-group {
         width: 100%;
     }
+    #skip-btn {
+        order: 3;
+        align-self: center;
+    }
 
     /* Floating Buttons -> Static */
     .left-buttons, .right-buttons {
