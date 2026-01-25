@@ -213,7 +213,9 @@
         let excludedImages = new Set();
         
         function selectWinner(winnerImage) {
+            {% if sound_enabled %}
             playClickSound();
+            {% endif %}
             const winner = currentImages[winnerImage];
             const loser = winnerImage === 'image1' ? currentImages.image2 : currentImages.image1;
             
@@ -239,7 +241,9 @@
         }
         
         function skipPair() {
+            {% if sound_enabled %}
             playClickSound();
+            {% endif %}
             fetch('{{ url_for('skip_pair') }}', {
                 method: 'POST'
             })
