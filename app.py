@@ -23,6 +23,8 @@ excluded_images = set()
 IMAGE_FOLDER = 'static/images'
 image_pairs_lock = threading.Lock()
 comparisons_autosave_prefix = 'comparisons_autosave_'
+AUTOSAVE_FREQUENCY = int(os.environ.get('AUTOSAVE_FREQUENCY', '10'))
+SOUND_ENABLED = os.environ.get('SOUND_ENABLED', 'True').lower() == 'true'
 
 BASE_DIR = None
 current_directory = None
@@ -146,7 +148,7 @@ def import_comparison_history_file(file, append):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', sound_enabled=SOUND_ENABLED)
 
 def smart_shuffle():
     """
@@ -305,7 +307,7 @@ def update_elo():
     
     # Increment the counter and check if it's time to autosave
     comparisons_since_autosave += 1
-    if comparisons_since_autosave >= 10 or current_pair_index >= len(image_pairs):
+    if comparisons_since_autosave >= AUTOSAVE_FREQUENCY or current_pair_index >= len(image_pairs):
         autosave_rankings()
         comparisons_since_autosave = 0
     
@@ -531,4 +533,5 @@ if __name__ == '__main__':
     else:
         current_directory = IMAGE_FOLDER
     initialize_image_pairs()
+    comparisons_since_autosave = 0
     app.run(debug=False, threaded=True)
