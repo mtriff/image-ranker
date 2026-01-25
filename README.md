@@ -47,6 +47,19 @@
     - By default, only image folders within the `image-ranker` folder are accessible to the app. To permit access to different folders, specify the `BASE_DIR` environment variable (e.g. `BASE_DIR=/your/path python app.py`)
 5. Open a web browser and navigate to `http://localhost:5000`.
 
+### Configuration
+
+You can configure the application using the following environment variables:
+
+- `AUTOSAVE_FREQUENCY`: The number of comparisons to make before automatically saving the rankings. The default is `10`.
+- `SOUND_ENABLED`: Set to `false` to disable the click sound when comparing images. The default is `true`.
+
+Example:
+
+```
+AUTOSAVE_FREQUENCY=20 SOUND_ENABLED=false python app.py
+```
+
 ---
 ## ❓ How It Works
 ### TrueSkill ELO
