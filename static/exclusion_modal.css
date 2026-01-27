@@ -1,0 +1,185 @@
+/* ============================ MODAL STYLES ============================ */
+
+/* Modal overlay */
+.modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+/* Modal box */
+.modal-content {
+    background: white;
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    margin: 5vh auto;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+#exclusion-thumbnail {
+    width: 100%;
+    max-height: 200px;
+    object-fit: contain;
+    margin-bottom: 15px;
+}
+
+.modal-header {
+    padding: 15px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.2em;
+}
+
+.modal-body {
+    flex: 1; 
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.modal-footer {
+    padding: 15px;
+    border-top: 1px solid #ddd;
+    flex-shrink: 0;
+}
+
+.exclusion-modal-buttons {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.confirm-btn, .cancel-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 48%;
+}
+
+.confirm-btn .material-symbols-rounded,
+.cancel-btn .material-symbols-rounded {
+    font-size: 20px;
+}
+
+.exclusion-reasons-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 0;
+}
+
+.exclusion-reasons-list label {
+    display: block;
+    padding: 15px;
+    background-color: #f0f0f0;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    font-size: 1.1em;
+}
+
+.exclusion-reasons-list label:hover {
+    background-color: #e0e0e0;
+}
+
+.exclusion-reasons-list input[type="radio"] {
+    margin-right: 10px;
+    transform: scale(1.2);
+}
+
+.confirm-btn, .cancel-btn {
+    padding: 12px 20px;
+    font-size: 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.1s, transform 0.05s;
+    border: 2px solid #000000;
+    color: #000000;
+    background-color: #ffffff;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 48%;
+}
+
+.confirm-btn:hover, .cancel-btn:hover {
+    background-color: #000000;
+    transform: scale(1.02);
+    transform: translateY(-3px);
+    box-shadow: 0 3px 5px #00000086;
+    color: white;
+}
+
+.confirm-btn:active, .cancel-btn:active {
+    transform: scale(0.98);
+}
+
+.confirm-btn:disabled {
+    background-color: #cccccc;
+    color: #666666;
+    border: 2px solid #999999;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+#exclusion-confirmation-message {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 15px;
+    text-align: center;
+    color: #333;
+}
+
+@media (min-width: 769px) {
+    .exclusion-modal-content-container {
+        display: flex;
+        gap: 20px;
+    }
+
+    #exclusion-thumbnail {
+        flex: 1;
+    }
+
+    #exclusion-form {
+        flex: 1;
+    }
+}
+
+@media (max-width: 768px) {
+    .modal-content {
+        width: 95%;
+        margin: 2.5vh auto;
+        max-height: 85vh;
+    }
+
+    .exclusion-modal-buttons {
+        gap: 8px;
+    }
+
+    .confirm-btn, .cancel-btn {
+        width: 48%;
+        padding: 15px;
+    }
+
+    .exclusion-reasons-list label {
+        padding: 18px 15px;
+        font-size: 1.2em;
+    }
+}

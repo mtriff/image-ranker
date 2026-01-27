@@ -6,6 +6,10 @@ body {
     padding: 0;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
 h2 {
     text-align: center;
 }
@@ -1180,6 +1184,8 @@ button:active {
 
 .modal-body {
     flex: 1;
+    padding: 20px;
+    overflow-y: auto;
 }
 
 .modal-body iframe {
@@ -1299,3 +1305,24 @@ button:active {
     color: black;
   }
 }
+
+
+@media (max-width: 768px) {
+    .action-buttons [title]:hover::after {
+        right: 100%;
+        left: auto;
+        top: 50%;
+        transform: translateY(-50%) translateX(-10px);
+    }
+
+    .action-buttons [title]:hover::before {
+        right: 100%;
+        left: auto;
+        top: 50%;
+        transform: translateY(-50%) translateX(-2px);
+        border: 8px solid transparent;
+        border-left-color: #000000;
+        border-right-width: 0;
+    }
+}
+
