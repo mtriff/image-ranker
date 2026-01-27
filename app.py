@@ -98,6 +98,12 @@ def get_image_counts_in_folders(folders, timeout=0.5):
 def initialize_image_pairs(a=False):
     global image_pairs, current_pair_index
     image_paths, _ = get_image_paths(IMAGE_FOLDER)
+    
+    if len(image_paths) < 2:
+        image_pairs = []
+        current_pair_index = 0
+        return
+
     random.shuffle(image_paths)
     n = len(image_paths)
     initial_pairs = []

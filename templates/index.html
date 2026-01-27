@@ -198,6 +198,11 @@
                 }
                 if (data.error) {
                     if (data.error === 'All comparisons completed in get_images') {
+                        currentImages = {};
+                        document.getElementById('image1').src = '';
+                        document.getElementById('image2').src = '';
+                        document.getElementById('image1-name').textContent = '';
+                        document.getElementById('image2-name').textContent = '';
                         fetch('{{ url_for('get_progress') }}')
                         .then(response => response.json())
                         .then(progress => {
