@@ -13,6 +13,7 @@
     <meta property="og:image" content="https://your-website-url.com/path-to-your-logo.png">
     <title>Image Ranker</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='exclusion_modal.css') }}">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <style>
         .material-symbols-rounded {
@@ -169,11 +170,25 @@
             </div>
         </div>
     </div>
+
+    {% include 'exclusion_modal.html' %}
     
     <script>
         let currentImages = {};
         let max_display = 30;
+        let exclusion_reasons = null;
+        let image_to_exclude = null;
         
+        function loadExclusionReasons() {
+            fetch('{{ url_for('get_exclusion_reasons') }}')
+                .then(response => response.json())
+                .then(data => {
+                    if (data) {
+                        exclusion_reasons = data;
+                    }
+                });
+        }
+
         function loadImages() {
             fetch('{{ url_for('get_images') }}',)
             .then(response => response.json())
@@ -210,7 +225,6 @@
         }
         
         let excludeDownvoted = false;
-        let excludedImages = new Set();
         
         function selectWinner(winnerImage) {
             {% if sound_enabled %}
@@ -234,7 +248,7 @@
                 updateRankings();
                 checkAutoShuffle();
                 if (excludeDownvoted) {
-                    excludedImages.add(loser);
+                    excludeImage(loser, 'excluded_downvoted');
                 }
                 loadImages();
             });
@@ -256,29 +270,80 @@
         }
 
         function removeImage(img_path) {
-            const confirmation = confirm(`Are you sure you want to remove ${img_path.split('/').pop()}? This will remove all remaining pairs that include this image.`);
-            if (!confirmation) return;
-            if (!img_path) {
-                console.error(`Image ${img_path} not found`);
-                return;
+            if (exclusion_reasons) {
+                openExclusionModal(img_path);
+            } else {
+                const confirmation = confirm(`Are you sure you want to remove ${img_path.split('/').pop()}? This will remove all remaining pairs that include this image.`);
+                if (confirmation) {
+                    excludeImage(img_path, 'excluded');
+                }
             }
-            if (confirmation) {
-                console.error("fetching")
-                fetch('{{ url_for('remove_image') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ del_img: img_path }),
-                })
-                .then(() => {
-                    loadImages();
-                    updateRankings();
-                })
-                .catch(error => {
-                    console.error('Error removing image:', error);
+        }
+
+        function openExclusionModal(img_path) {
+            image_to_exclude = img_path;
+            
+            // Set the confirmation message and thumbnail
+            const imageName = img_path.split('/').pop();
+            document.getElementById('exclusion-confirmation-message').innerHTML = `Are you sure you want to remove ${imageName}?<br/>This will remove all remaining pairs that include this image.`;
+            document.getElementById('exclusion-thumbnail').src = '{{ url_for('serve_image') }}?path=' + img_path;
+
+            const container = document.getElementById('exclusion-reasons-container');
+            const confirmBtn = document.getElementById('confirm-exclusion-btn');
+            
+            container.innerHTML = ''; // Clear previous radio buttons
+            confirmBtn.disabled = true; // Disable confirm button initially
+
+            for (const key in exclusion_reasons) {
+                const label = document.createElement('label');
+                const radio = document.createElement('input');
+                radio.type = 'radio';
+                radio.name = 'exclusion_reason';
+                radio.value = key;
+                radio.required = true;
+
+                radio.addEventListener('change', () => {
+                    confirmBtn.disabled = false;
                 });
+                
+                label.appendChild(radio);
+                label.appendChild(document.createTextNode(exclusion_reasons[key]));
+                container.appendChild(label);
             }
+
+            document.body.classList.add('modal-open');
+            document.getElementById('exclusionModal').style.display = 'block';
+            
+            document.getElementById('exclusion-form').onsubmit = function(event) {
+                event.preventDefault();
+                const selectedReason = container.querySelector('input[name="exclusion_reason"]:checked');
+                if (selectedReason) {
+                    excludeImage(image_to_exclude, selectedReason.value);
+                }
+            };
+        }
+
+        function closeExclusionModal() {
+            document.body.classList.remove('modal-open');
+            document.getElementById('exclusionModal').style.display = 'none';
+        }
+
+        function excludeImage(img_path, reason) {
+            fetch('{{ url_for('exclude_image') }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ excluded_image: img_path, reason: reason }),
+            })
+            .then(() => {
+                loadImages();
+                updateRankings();
+                closeExclusionModal();
+            })
+            .catch(error => {
+                console.error('Error excluding image:', error);
+            });
         }
         
         function updateRankings() {
@@ -377,6 +442,7 @@
         
         loadImages();
         updateRankings();
+        loadExclusionReasons();
 
         function selectDirectory(path, autosaveProgressFile) {
             fetch('{{ url_for('set_directory') }}', {
@@ -623,10 +689,12 @@
         });
 
         function openModal() {
+            document.body.classList.add('modal-open');
             document.getElementById("folderModal").style.display = "block"
         }
 
         function closeModal() {
+            document.body.classList.remove('modal-open');
             document.getElementById("folderModal").style.display = "none"
         }
 

@@ -53,11 +53,34 @@ You can configure the application using the following environment variables:
 
 - `AUTOSAVE_FREQUENCY`: The number of comparisons to make before automatically saving the rankings. The default is `10`.
 - `SOUND_ENABLED`: Set to `false` to disable the click sound when comparing images. The default is `true`.
+- `EXCLUSION_REASONS_FILE`: The path to a JSON file containing reasons for excluding an image. See the "Exclusion Reasons" section for more details.
 
 Example:
 
 ```
 AUTOSAVE_FREQUENCY=20 SOUND_ENABLED=false python app.py
+```
+
+### Exclusion Reasons
+
+You can provide a JSON file with reasons for excluding an image. This allows you to categorize your excluded images. If a valid exclusion reason file is provided, a modal will appear when you try to exclude an image, allowing you to select a reason for the exclusion.
+
+The JSON file should be a simple key-value pair object, where the keys are short identifiers for the exclusion reason and the values are the descriptions that will be displayed to the user.
+
+**Example `exclusion_reasons.json`:**
+```json
+{
+  "blurry": "Blurry image",
+  "low_quality": "Low quality",
+  "duplicate": "Duplicate image",
+  "other": "Other"
+}
+```
+
+To use this feature, set the `EXCLUSION_REASONS_FILE` environment variable to the path of your JSON file:
+
+```
+EXCLUSION_REASONS_FILE=/path/to/your/exclusion_reasons.json python app.py
 ```
 
 ---

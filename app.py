@@ -13,18 +13,28 @@ import tkinter as tk
 from tkinter import filedialog
 import logging
 import platform
+import json
 
 logging.basicConfig(level=logging.DEBUG)
 
 # Global variables
 app = Flask(__name__)
 elo_ranking = TrueSkillRanking()
-excluded_images = set()
+excluded_images = {}
+exclusion_reasons = None
 IMAGE_FOLDER = 'static/images'
 image_pairs_lock = threading.Lock()
 comparisons_autosave_prefix = 'comparisons_autosave_'
 AUTOSAVE_FREQUENCY = int(os.environ.get('AUTOSAVE_FREQUENCY', '10'))
 SOUND_ENABLED = os.environ.get('SOUND_ENABLED', 'True').lower() == 'true'
+
+exclusion_reasons_file = os.environ.get('EXCLUSION_REASONS_FILE')
+if exclusion_reasons_file:
+    try:
+        with open(exclusion_reasons_file, 'r') as f:
+            exclusion_reasons = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logging.error(f"Error loading exclusion reasons file: {e}")
 
 BASE_DIR = None
 current_directory = None
@@ -253,7 +263,7 @@ def serve_image():
         return jsonify({'error': str(e)}), 500
 
 def autosave_rankings():
-    global elo_ranking, current_directory, comparisons_autosave_prefix
+    global elo_ranking, current_directory, comparisons_autosave_prefix, excluded_images
     
     if not current_directory:
         app.logger.warning("No image directory selected. Autosave aborted.")
@@ -289,7 +299,12 @@ def autosave_rankings():
             else:
                 writer.writerow([winner, loser])
 
-    app.logger.info(f"Autosave completed. Files saved in {current_directory}: {os.path.basename(rankings_filename)}, {os.path.basename(comparisons_filename)}")
+    # Save exclusions
+    exclusions_filename = os.path.join(current_directory, f'exclusions_autosave_{current_date}.json')
+    with open(exclusions_filename, 'w') as f:
+        json.dump(excluded_images, f)
+
+    app.logger.info(f"Autosave completed. Files saved in {current_directory}: {os.path.basename(rankings_filename)}, {os.path.basename(comparisons_filename)}, {os.path.basename(exclusions_filename)}")
 
 @app.route('/update_elo', methods=['POST'])
 def update_elo():
@@ -301,7 +316,7 @@ def update_elo():
     loser = data['loser']
     elo_ranking.update_rating((winner, loser))
     if data.get('exclude_loser', False):
-        excluded_images.add(loser)
+        excluded_images[loser] = 'excluded'
         # Recalculate image pairs
         initialize_image_pairs()
     
@@ -365,7 +380,7 @@ def get_progress():
 
 @app.route('/set_directory', methods=['POST'])
 def set_directory():
-    global IMAGE_FOLDER, current_directory, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave
+    global IMAGE_FOLDER, current_directory, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave, excluded_images
     
     try:
         rel_path = request.form["path"]
@@ -374,13 +389,13 @@ def set_directory():
         directory = os.path.join(BASE_DIR, rel_path)
 
         if directory:
-            global IMAGE_FOLDER, elo_ranking, image_pairs, current_pair_index, comparisons_since_autosave, current_directory
             if not directory.startswith(BASE_DIR):
                 abort(403)
 
             IMAGE_FOLDER = directory
             current_directory = directory  # Save the selected directory
             elo_ranking = TrueSkillRanking()  # Reset the ELO rankings
+            excluded_images = {} # Reset excluded images
             initialize_image_pairs()
             current_pair_index = 0  # Reset the current pair index
             comparisons_since_autosave = 0  # Reset the autosave counter
@@ -389,6 +404,12 @@ def set_directory():
                 if os.path.exists(autosave_file):
                     with open(autosave_file, 'rb') as file:
                         import_comparison_history_file(file, True)
+                
+                exclusions_file_path = os.path.join(os.path.dirname(autosave_file), f'exclusions_autosave_{os.path.basename(autosave_file).split("_")[-1].replace(".csv", "")}.json')
+                if os.path.exists(exclusions_file_path):
+                    with open(exclusions_file_path, 'r') as f:
+                        excluded_images = json.load(f)
+
             return jsonify({'success': True, 'directory': directory})
         else:
             return jsonify({'success': False, 'error': 'No directory selected'})
@@ -459,6 +480,19 @@ def export_comparisons():
         app.logger.error(f"Error in export_comparisons: {str(e)}.")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/export_exclusions')
+def export_exclusions():
+    app.logger.info("Export exclusions route called.")
+    try:
+        if not excluded_images:
+            app.logger.warning("No exclusions data available.")
+            return jsonify({'error': 'No exclusions data available.'}), 400
+
+        return jsonify(excluded_images)
+    except Exception as e:
+        app.logger.error(f"Error in export_exclusions: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/import_comparison_history', methods=['POST'])
 def import_comparison_history():
     file = request.files['file']
@@ -467,12 +501,18 @@ def import_comparison_history():
     import_comparison_history_file(file, append)
     return jsonify({'success': True})
 
+@app.route('/get_exclusion_reasons')
+def get_exclusion_reasons():
+    global exclusion_reasons
+    return jsonify(exclusion_reasons)
+
 @app.route('/exclude_image', methods=['POST'])
 def exclude_image():
     global excluded_images
     data = request.json
     excluded_image = data['excluded_image']
-    excluded_images.add(excluded_image)
+    reason = data.get('reason', 'excluded')
+    excluded_images[excluded_image] = reason
     # Recalculate image pairs
     initialize_image_pairs()
     return jsonify({'success': True})

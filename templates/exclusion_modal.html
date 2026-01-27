@@ -1,0 +1,32 @@
+<!-- Exclusion Modal -->
+<div id="exclusionModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Select exclusion reason</h3>
+            <button class="major-icon-btn" onclick="closeExclusionModal()"><span class="material-symbols-rounded">close</span></button>
+        </div>
+        <div class="modal-body">
+            <p id="exclusion-confirmation-message"></p>
+            <div class="exclusion-modal-content-container">
+                <img id="exclusion-thumbnail" src="" alt="Image thumbnail" />
+                <form id="exclusion-form">
+                    <div id="exclusion-reasons-container" class="exclusion-reasons-list">
+                        <!-- Exclusion reasons will be populated here -->
+                    </div>
+                </form>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <div class="exclusion-modal-buttons">
+                <button type="button" class="cancel-btn" onclick="closeExclusionModal()">
+                    <span class="material-symbols-rounded">cancel</span>
+                    Cancel
+                </button>
+                <button type="submit" id="confirm-exclusion-btn" class="confirm-btn" disabled form="exclusion-form">
+                    <span class="material-symbols-rounded">check_circle</span>
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
